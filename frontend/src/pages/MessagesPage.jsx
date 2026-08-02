@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { AtSign, MessagesSquare, Plus } from 'lucide-react';
 import { fetchChatGroups, setActiveChatGroup } from '../store/chatSlice';
 import ChatThread from '../components/chat/ChatThread';

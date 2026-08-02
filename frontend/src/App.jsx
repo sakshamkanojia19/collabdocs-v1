@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { BrowserRouter as Router, Navigate, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Routes, Route } from 'react-router';
 import { useDispatch, useSelector } from 'react-redux';
 import { loadUser } from './store/authSlice';
 import PrivateRoute from './components/common/PrivateRoute';

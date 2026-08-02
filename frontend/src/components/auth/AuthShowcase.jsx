@@ -1,5 +1,5 @@
 import { ArrowRight, Check } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 const highlights = ['Real-time co-editing', 'Decisions stay logged', 'AI grounded in your docs'];
 

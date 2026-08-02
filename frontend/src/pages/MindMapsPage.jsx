@@ -11,7 +11,7 @@ import {
   Search,
   Sparkles
 } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router';
 import api from '../services/api';
 import ArtifactGeneratorDialog from '../components/ai/ArtifactGeneratorDialog';
 import MindMapCanvas from '../components/ai/MindMapCanvas';

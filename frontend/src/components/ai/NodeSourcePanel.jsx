@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { ArrowUpRight, FileText, Loader2, Quote, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Button } from '@/components/ui/button';
 import api from '../../services/api';
 import { requestAnchorFocus } from '../../store/documentSlice';

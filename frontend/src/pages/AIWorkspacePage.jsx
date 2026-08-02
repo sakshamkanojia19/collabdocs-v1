@@ -9,7 +9,7 @@ import {
   Sparkles,
   WandSparkles
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import api from '../services/api';
 import ArtifactGeneratorDialog from '../components/ai/ArtifactGeneratorDialog';
 import WorkspaceAskPanel from '../components/ai/WorkspaceAskPanel';

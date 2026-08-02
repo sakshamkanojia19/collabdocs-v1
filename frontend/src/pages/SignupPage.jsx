@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ShieldCheck, Sparkles } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 import { useDispatch, useSelector } from 'react-redux';
 import { clearAuthError, registerUser } from '../store/authSlice';
 import { prefetchWorkspace } from '../lib/prefetch';
