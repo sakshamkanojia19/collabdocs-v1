@@ -4,6 +4,11 @@ const CONTINUATION_ATTRIBUTE = 'data-pagination-continuation';
 const EMPTY_DOCUMENT_HTML = '<p><br></p>';
 const OVERFLOW_TOLERANCE_PX = 2;
 const MAX_PAGES = 500;
+// Pagination is purely visual, so giving up beats blocking the main thread.
+// Every loop iteration forces a synchronous layout; without a hard time
+// budget a degenerate measurement state (zoomed devtools emulation, hidden
+// editor, transforms) freezes the tab hard enough that Chrome kills it.
+const PAGINATION_TIME_BUDGET_MS = 400;
 
 const SPLITTABLE_BLOCKS = new Set([
   'ADDRESS',
@@ -210,14 +215,30 @@ export const paginateEditor = (editor, { preserveCaret = true } = {}) => {
   let page = firstPage;
   let pageCount = 1;
   let paginationOperations = 0;
+  let previousSignature = null;
+  const deadline = Date.now() + PAGINATION_TIME_BUDGET_MS;
+
+  // A page that cannot be measured (hidden editor, zero-height layout) makes
+  // every block "overflow" while nothing can be split — skip until it can be.
+  const canMeasure = firstPage.clientHeight > 0;
 
   while (
+    canMeasure &&
     page &&
     pageOverflows(page) &&
     pageCount < MAX_PAGES &&
-    paginationOperations < MAX_PAGES * 100
+    paginationOperations < MAX_PAGES * 100 &&
+    Date.now() < deadline
   ) {
     paginationOperations += 1;
+
+    // If the previous iteration left this page byte-for-byte where it was,
+    // splitting is not converging (measurement skew); force the page through
+    // the oversized path instead of re-splitting it forever.
+    const signature = `${pageCount}:${page.childNodes.length}:${page.scrollHeight}`;
+    const stalled = signature === previousSignature;
+    previousSignature = signature;
+
     let nextPage = page.nextElementSibling;
     if (!isPage(nextPage)) {
       nextPage = createPage(editor.ownerDocument);
@@ -230,13 +251,13 @@ export const paginateEditor = (editor, { preserveCaret = true } = {}) => {
 
     const onlyBlock = page.childNodes.length === 1;
     const continuation =
-      overflowBlock.nodeType === Node.ELEMENT_NODE
+      !stalled && overflowBlock.nodeType === Node.ELEMENT_NODE
         ? splitOverflowingBlock(page, overflowBlock)
         : null;
 
     if (continuation) {
       nextPage.insertBefore(continuation, nextPage.firstChild);
-    } else if (!onlyBlock) {
+    } else if (!onlyBlock && !stalled) {
       nextPage.insertBefore(overflowBlock, nextPage.firstChild);
     } else {
       // Large tables/images cannot be safely divided without changing content.
