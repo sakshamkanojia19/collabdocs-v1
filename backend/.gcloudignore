@@ -1,0 +1,22 @@
+# gcloud uploads this directory to a Cloud Build staging bucket. Without this
+# file the upload would include .env.local, which holds real credentials.
+
+# Secrets — never upload
+.env
+.env.*
+!.env.example
+
+# Dependencies (reinstalled by the Dockerfile)
+node_modules
+**/node_modules
+
+# Version control
+.git
+.gitignore
+
+# Local-only infrastructure and output
+docker/
+logs/
+*.log
+*.tmp
+*.swp
