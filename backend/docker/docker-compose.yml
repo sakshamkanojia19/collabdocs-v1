@@ -1,0 +1,98 @@
+name: collabdocs
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: collabdocs_mongodb
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "--eval",
+          "db.adminCommand('ping').ok"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - collabdocs
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: collabdocs_redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - collabdocs
+
+  backend:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: collabdocs_backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      FRONTEND_URL: http://localhost:5173
+      MONGO_URI: mongodb://mongodb:27017/collabdocs
+      REDIS_URL: redis://redis:6379/0
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-collabdocs-local-development-secret-change-before-production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-collabdocs-local-refresh-secret-change-before-production}
+      AUTH_TOKEN_TTL: 15m
+      REFRESH_TOKEN_TTL: 7d
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-terra}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      AI_MAX_DOCUMENT_CHARS: ${AI_MAX_DOCUMENT_CHARS:-500000}
+      AI_REQUESTS_PER_MINUTE: ${AI_REQUESTS_PER_MINUTE:-10}
+      KAFKA_BROKERS: ""
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - collabdocs
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+    container_name: collabdocs_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_APP_BACKEND_URL: http://localhost:3000/api/v1
+      VITE_APP_SOCKET_URL: http://localhost:3000
+      VITE_APP_CHAT_SOCKET_URL: http://localhost:3000
+    depends_on:
+      - backend
+    networks:
+      - collabdocs
+
+volumes:
+  mongodb_data:
+  redis_data:
+
+networks:
+  collabdocs:
+    driver: bridge

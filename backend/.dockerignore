@@ -1,0 +1,18 @@
+﻿# General
+.git
+.gitignore
+**/node_modules
+**/.env
+**/.env.local
+**/.DS_Store
+
+# Frontend build artifacts
+frontend/dist
+
+# Local files
+*.log
+*.tmp
+*.swp
+
+# Docker compose & local infra (not needed inside image)
+docker/
