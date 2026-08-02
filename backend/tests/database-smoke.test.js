@@ -86,12 +86,15 @@ test(
       const documentId = createdDocument.body.document._id;
 
       if (!process.env.OPENAI_API_KEY) {
+        // Without a provider key the summary falls back to local extraction
+        // rather than failing, so it must still return a usable artifact.
         const unconfiguredAi = await request(`/ai/documents/${documentId}/summary`, {
           token: owner.token,
           method: 'POST'
         });
-        assert.equal(unconfiguredAi.response.status, 503);
-        assert.match(unconfiguredAi.body.error, /OPENAI_API_KEY/i);
+        assert.equal(unconfiguredAi.response.status, 200);
+        assert.ok(unconfiguredAi.body.artifact.result.overview.length > 0);
+        assert.ok(Array.isArray(unconfiguredAi.body.artifact.result.keyPoints));
       }
 
       const sharedDocument = await request(`/documents/${documentId}/collaborators`, {
