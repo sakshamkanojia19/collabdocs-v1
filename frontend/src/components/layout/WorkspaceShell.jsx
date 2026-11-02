@@ -8,6 +8,7 @@ import {
   CircleHelp,
   Clock3,
   FilePlus2,
+  FileText,
   Files,
   Home,
   LogOut,
@@ -22,14 +23,15 @@ import {
   Share2,
   Sparkles,
   Sun,
+  Plus,
   UserPlus,
   UserRound,
-  UsersRound,
   WandSparkles
 } from 'lucide-react';
 import { logout } from '../../store/authSlice';
 import { setTheme } from '../../store/themeSlice';
 import { fetchNotifications, markNotificationRead } from '../../store/notificationSlice';
+import { fetchDocuments } from '../../store/documentSlice';
 import {
   fetchChatNotifications,
   markChatNotificationRead,
@@ -39,6 +41,13 @@ import {
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from '../ui/dialog';
 import {
   CommandDialog,
   CommandEmpty,
@@ -93,6 +102,7 @@ const WorkspaceShell = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [commandOpen, setCommandOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => window.localStorage.getItem('cd:sidebar-collapsed') === '1'
@@ -114,6 +124,10 @@ const WorkspaceShell = () => {
   const { groups: chatGroups, notifications: chatNotifications } = useSelector(
     (state) => state.chat
   );
+
+  const planLabel = entitlements?.planLabel || 'Free';
+  const seatCapacity = Math.max(1, account?.seats || 1);
+  const seatsUsed = Math.min(seatCapacity, account?.seatsUsed || 1);
 
   const unreadDocuments = notifications.filter((item) => item.status === 'pending').length;
   const unreadChats = chatNotifications.filter((item) => item.status !== 'read').length;
@@ -138,6 +152,12 @@ const WorkspaceShell = () => {
         .slice(0, 12),
     [documents]
   );
+
+  // The sidebar's Recent list and the command palette need documents on every
+  // page, not only after the dashboard has loaded them.
+  useEffect(() => {
+    dispatch(fetchDocuments());
+  }, [dispatch]);
 
   useEffect(() => {
     dispatch(fetchNotifications());
@@ -201,8 +221,8 @@ const WorkspaceShell = () => {
           onClick={() => goTo('/dashboard')}
           className="flex min-w-0 items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors duration-control hover:bg-secondary"
         >
-          <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-caption font-bold text-primary-foreground">
-            CD
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
+            <FileText className="size-4" strokeWidth={2.2} />
           </span>
           <span className="min-w-0">
             <span className="block truncate text-body font-semibold">
@@ -240,17 +260,12 @@ const WorkspaceShell = () => {
       </div>
 
       <div className="px-3 pb-1">
-        <button
-          type="button"
-          onClick={() => setCommandOpen(true)}
-          className="flex h-9 w-full items-center gap-2 rounded-lg border bg-background px-2.5 text-body text-muted-foreground shadow-raised transition-colors duration-control hover:border-input"
+        <Button
+          className="h-9 w-full gap-1.5 rounded-lg text-body font-semibold shadow-raised"
+          onClick={() => goTo('/dashboard?create=1')}
         >
-          <Search className="size-3.5" />
-          <span className="flex-1 truncate text-left">Search…</span>
-          <kbd className="rounded border bg-secondary px-1.5 py-0.5 font-sans text-meta font-medium text-muted-foreground">
-            Ctrl K
-          </kbd>
-        </button>
+          <Plus className="size-4" /> New document
+        </Button>
       </div>
 
       <nav
@@ -328,45 +343,28 @@ const WorkspaceShell = () => {
           )}
         </div>
 
-        <p className="mb-1.5 px-2 pt-6 text-meta font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-          Manage
-        </p>
-        <button
-          type="button"
-          onClick={() => goTo('/settings')}
-          className={navItemClass(['/profile', '/settings'].includes(location.pathname))}
-        >
-          <Settings2 className="size-4" strokeWidth={1.8} />
-          Settings
-        </button>
       </nav>
 
-      <div className="mx-3 mb-3 rounded-xl border bg-card p-3.5 shadow-raised">
-        <div className="flex items-center gap-2.5">
-          <span className="icon-chip">
-            <UsersRound className="size-4" />
+      <div className="mx-3 mb-3 rounded-xl border bg-card p-3 shadow-raised">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-caption font-semibold">{planLabel} plan</p>
+          <span className="text-meta text-muted-foreground">
+            {seatsUsed} of {seatCapacity} seats
           </span>
-          <div>
-            <p className="text-body font-semibold">Build your team</p>
-            <p className="mt-0.5 text-meta text-muted-foreground">Collaborate in real time</p>
-          </div>
         </div>
-        <Button
-          variant="outline"
-          className="mt-3 h-8 w-full gap-2 rounded-lg text-caption"
-          onClick={() => goTo('/settings')}
-        >
-          <UserPlus className="size-3.5" /> Invite members
-        </Button>
-      </div>
-
-      <div className="border-t px-3 py-2">
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary">
+          <div
+            className="h-full rounded-full bg-primary transition-[width] duration-panel"
+            style={{ width: `${Math.min(100, Math.round((seatsUsed / seatCapacity) * 100))}%` }}
+          />
+        </div>
         <button
           type="button"
-          className="flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-body text-muted-foreground transition-colors duration-control hover:bg-secondary hover:text-foreground"
+          onClick={() => goTo('/settings')}
+          className="mt-2 flex items-center gap-1.5 text-meta font-semibold text-primary transition-colors duration-control hover:text-primary/80"
         >
-          <CircleHelp className="size-4" strokeWidth={1.8} />
-          Help & shortcuts
+          <UserPlus className="size-3" />
+          {seatsUsed < seatCapacity ? 'Invite teammates' : 'Manage plan'}
         </button>
       </div>
     </div>
@@ -381,7 +379,7 @@ const WorkspaceShell = () => {
         aria-label="CollabDocs home"
         title="CollabDocs"
       >
-        CD
+        <FileText className="size-4" strokeWidth={2.2} />
       </button>
       <Button
         variant="ghost"
@@ -473,28 +471,24 @@ const WorkspaceShell = () => {
         <button
           type="button"
           onClick={() => setCommandOpen(true)}
-          className="mx-auto hidden h-9 w-full min-w-0 max-w-[420px] items-center gap-2 rounded-full border bg-[hsl(var(--workspace))] px-3.5 text-left text-body text-muted-foreground transition-colors duration-control hover:border-input hover:bg-background md:flex"
+          className="hidden h-9 w-full min-w-0 max-w-[360px] items-center gap-2 rounded-lg bg-secondary px-3 text-left text-body text-muted-foreground transition-colors duration-control hover:bg-secondary/70 hover:text-foreground md:flex"
         >
           <Search className="size-4" />
-          <span className="flex-1 truncate">Search documents, people, or actions</span>
-          <kbd className="rounded-md border bg-background px-1.5 py-0.5 font-sans text-meta font-medium">
+          <span className="flex-1 truncate">Search docs, decisions, people</span>
+          <kbd className="rounded-md border bg-card px-1.5 py-0.5 font-sans text-meta font-medium">
             Ctrl K
           </kbd>
         </button>
 
-        <div className="ml-auto flex items-center gap-1 md:ml-0">
-          <Button
-            className="mr-1 hidden h-9 gap-2 rounded-full px-4 text-body font-medium shadow-raised sm:inline-flex"
-            onClick={() => goTo('/dashboard?create=1')}
-          >
-            <FilePlus2 className="size-3.5" /> New document
-          </Button>
+        <div className="ml-auto flex items-center gap-1">
 
           <Button
             variant="ghost"
             size="icon"
             className="hidden size-9 rounded-lg text-muted-foreground sm:inline-flex"
-            aria-label="Help"
+            onClick={() => setShortcutsOpen(true)}
+            aria-label="Help and keyboard shortcuts"
+            title="Help and keyboard shortcuts"
           >
             <CircleHelp className="size-4" />
           </Button>
@@ -518,7 +512,7 @@ const WorkspaceShell = () => {
               >
                 <Bell className="size-4" />
                 {unreadDocuments + unreadChats > 0 && (
-                  <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-destructive ring-2 ring-background" />
+                  <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-primary ring-2 ring-background" />
                 )}
               </Button>
             </DropdownMenuTrigger>
@@ -713,6 +707,29 @@ const WorkspaceShell = () => {
           )}
         </CommandList>
       </CommandDialog>
+
+      <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}>
+        <DialogContent className="max-w-sm rounded-xl">
+          <DialogHeader>
+            <DialogTitle className="text-title-sm">Keyboard shortcuts</DialogTitle>
+            <DialogDescription className="text-body">Move around CollabDocs without the mouse.</DialogDescription>
+          </DialogHeader>
+          <dl className="divide-y rounded-lg border text-body">
+            {[
+              ['Search and run actions', 'Ctrl K'],
+              ['Create a new document', 'Ctrl N'],
+              ['Close a dialog or panel', 'Esc']
+            ].map(([label, keys]) => (
+              <div key={label} className="flex items-center justify-between px-3 py-2.5">
+                <dt>{label}</dt>
+                <dd>
+                  <kbd className="rounded-md border bg-secondary px-1.5 py-0.5 font-sans text-meta font-medium">{keys}</kbd>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </DialogContent>
+      </Dialog>
 
       <Suspense fallback={null}>
         <ChatSidebar />

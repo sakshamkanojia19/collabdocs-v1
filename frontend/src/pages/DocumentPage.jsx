@@ -1543,22 +1543,22 @@ const DocumentPage = () => {
           <div className="flex h-11 shrink-0 items-center justify-between border-b px-3">
             <div className="flex rounded-lg bg-secondary p-0.5">
               {[
-                { value: 'ai', label: 'AI', icon: Sparkles },
-                { value: 'decisions', label: 'Log', icon: Gavel },
-                { value: 'outline', label: 'Outline', icon: ListTree },
-                { value: 'details', label: 'Details', icon: Info }
+                { value: 'ai', label: 'AI', title: 'AI summaries, mind maps and Q&A' },
+                { value: 'decisions', label: 'Decisions', title: 'Decisions and discussions on this document' },
+                { value: 'outline', label: 'Outline', title: 'Document outline' },
+                { value: 'details', label: 'Details', title: 'Document details and sharing' }
               ].map((tab) => (
                 <button
                   key={tab.value}
                   type="button"
+                  title={tab.title}
                   onClick={() => setInspectorTab(tab.value)}
-                  className={`flex h-7 items-center gap-1.5 rounded-md px-2 text-caption transition-colors duration-control ${
+                  className={`flex h-7 items-center rounded-md px-2 text-caption transition-colors duration-control ${
                     inspectorTab === tab.value
                       ? 'bg-card font-medium text-foreground shadow-raised'
                       : 'text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  <tab.icon className="size-3.5" strokeWidth={1.8} />
                   {tab.label}
                 </button>
               ))}

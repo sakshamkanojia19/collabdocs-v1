@@ -6,13 +6,10 @@ import { clearAuthError, registerUser } from '../store/authSlice';
 import { prefetchWorkspace } from '../lib/prefetch';
 import AuthShell from '../components/auth/AuthShell';
 import {
-  AuthDivider,
   Field,
   FormAlert,
-  FormNotice,
   PasswordInput,
   PasswordStrength,
-  SocialButtons,
   SubmitButton
 } from '../components/auth/AuthControls';
 import { isStrongPassword } from '../components/auth/password-rules';
@@ -29,7 +26,6 @@ const SignupPage = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
-  const [notice, setNotice] = useState('');
 
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -60,7 +56,6 @@ const SignupPage = () => {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    setNotice('');
     if (!validate()) return;
     dispatch(registerUser({ name: name.trim(), email: email.trim(), password }));
   };
@@ -196,23 +191,11 @@ const SignupPage = () => {
           </div>
 
           {serverError && <FormAlert>{serverError}</FormAlert>}
-          {notice && <FormNotice>{notice}</FormNotice>}
 
           <SubmitButton pending={submitting} pendingLabel="Creating your workspace…">
             Create account
           </SubmitButton>
         </form>
-
-        <div className="my-6">
-          <AuthDivider>Or sign up with</AuthDivider>
-        </div>
-
-        <SocialButtons
-          disabled={submitting}
-          onUnavailable={() =>
-            setNotice('Single sign-on can be connected once your workspace exists.')
-          }
-        />
       </div>
     </AuthShell>
   );

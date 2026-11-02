@@ -1,124 +1,64 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router';
-import { Clock3, FileText, UsersRound } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { extractPreviewText, getAccess, getInitials } from '@/lib/document-display';
 
-const getInitials = (name, email) =>
-  (name || email || 'CD')
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase();
+const AVATAR_TONES = [
+  'bg-primary/10 text-primary',
+  'bg-info-soft text-info',
+  'bg-success-soft text-success',
+  'bg-warning-soft text-warning'
+];
 
 /**
- * Real text for the page thumbnail, like Google Docs previews. Handles the
- * HTML-string content shape and falls back to contentText when present.
+ * Library card: access pill, title, a two-line excerpt of the real content, and
+ * who is on the document. The whole card opens the document; owner actions sit
+ * beside the pill.
  */
-const extractPreviewText = (document) => {
-  const raw =
-    typeof document.content === 'string'
-      ? document.content
-      : typeof document.content?.html === 'string'
-        ? document.content.html
-        : document.contentText || '';
-  return raw
-    .replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 600);
-};
-
-const DocumentPreviewCard = ({ document, isOwner, relativeDate, actions, selected = false, onSelect }) => {
-  const previewText = useMemo(() => extractPreviewText(document), [document]);
-  const collaboratorCount = (document.collaborators?.length || 0) + 1;
+const DocumentPreviewCard = ({ document, userId, relativeDate, actions }) => {
+  const excerpt = useMemo(() => extractPreviewText(document, 220, { skipTitle: true }), [document]);
+  const access = getAccess(document, userId);
+  const people = [document.owner, ...(document.collaborators || [])].filter(Boolean);
+  const title = document.title || 'Untitled document';
 
   return (
-    <article className="group min-w-0">
-      <div className="relative">
-        <Link
-          to={`/document/${document._id}`}
-          onClick={(event) => {
-            if (!onSelect) return;
-            event.preventDefault();
-            onSelect(document);
-          }}
-          className={cn(
-            'interactive-card relative block aspect-[0.76] overflow-hidden p-[11%]',
-            selected && 'border-primary ring-2 ring-primary/15 hover:border-primary'
-          )}
-        >
-          {previewText ? (
-            <>
-              <span className="mb-2.5 line-clamp-2 text-caption font-bold leading-snug text-foreground">
-                {document.title || 'Untitled document'}
-              </span>
-              <span className="block text-meta leading-[1.75] text-muted-foreground">
-                {previewText}
-              </span>
-              <span className="pointer-events-none absolute inset-x-0 bottom-0 h-[26%] bg-gradient-to-t from-card via-card/80 to-transparent" />
-            </>
-          ) : (
-            <span className="absolute inset-0 grid place-items-center">
-              <span className="flex flex-col items-center gap-2 text-muted-foreground/60">
-                <span className="grid size-9 place-items-center rounded-full bg-secondary">
-                  <FileText className="size-4" strokeWidth={1.6} />
-                </span>
-                <span className="text-meta font-medium">Empty document</span>
-              </span>
-            </span>
-          )}
-          {document.tags?.[0] && (
-            <span className="absolute bottom-[8%] left-[11%] truncate rounded-md bg-secondary px-2 py-0.5 text-meta font-medium text-muted-foreground">
-              {document.tags[0]}
-            </span>
-          )}
-        </Link>
-        <div className="absolute right-2.5 top-2.5 z-10 opacity-100 transition-opacity duration-control md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+    <article className="interactive-card group relative flex min-w-0 flex-col p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="icon-chip size-8">
+          <FileText className="size-4" strokeWidth={1.8} />
+        </span>
+        <div className="relative z-10 flex items-center gap-1.5">
+          <span className={`status-pill status-pill--${access.tone}`}>{access.label}</span>
           {actions}
         </div>
       </div>
 
-      <div className="px-1 pb-1 pt-3">
-        <div className="flex min-w-0 items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <Link
-              to={`/document/${document._id}`}
-              className="block truncate text-body font-semibold text-foreground transition-colors duration-control hover:text-primary"
-            >
-              {document.title || 'Untitled document'}
-            </Link>
-            <span className="mt-0.5 flex items-center gap-1.5 text-meta text-muted-foreground">
-              <Clock3 className="size-3" strokeWidth={1.8} /> Edited {relativeDate}
-            </span>
-          </div>
-          <div className="flex -space-x-1.5 pt-0.5" aria-label={`${collaboratorCount} collaborators`}>
-            <Avatar className="size-6 border-2 border-[hsl(var(--workspace))]">
-              <AvatarFallback className="bg-primary/10 text-meta font-semibold text-primary">
-                {getInitials(document.owner?.name, document.owner?.email)}
+      <Link
+        to={`/document/${document._id}`}
+        className="mt-3 truncate text-body-lg font-semibold text-foreground after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
+      >
+        {title}
+      </Link>
+      <p className="mt-1 line-clamp-2 min-h-10 text-body text-muted-foreground">
+        {excerpt || 'Empty document — open it to start writing.'}
+      </p>
+
+      <div className="mt-4 flex items-center justify-between gap-2 border-t pt-3">
+        <span className="truncate text-caption text-muted-foreground">Edited {relativeDate}</span>
+        <div className="flex -space-x-1.5" aria-label={`${people.length} people`}>
+          {people.slice(0, 3).map((person, index) => (
+            <Avatar key={person.userId || index} className="size-7 border-2 border-card" title={person.name || person.email}>
+              <AvatarFallback className={`text-meta font-semibold ${AVATAR_TONES[index % AVATAR_TONES.length]}`}>
+                {getInitials(person.name, person.email)}
               </AvatarFallback>
             </Avatar>
-            {collaboratorCount > 1 && (
-              <span className="grid size-6 place-items-center rounded-full border-2 border-[hsl(var(--workspace))] bg-primary text-meta font-semibold text-primary-foreground">
-                +{collaboratorCount - 1}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="truncate text-meta text-muted-foreground">
-            {isOwner ? 'Owned by you' : `Shared by ${document.owner?.name || document.owner?.email || 'a teammate'}`}
-          </span>
-          <Badge variant="secondary" className="h-5 shrink-0 gap-1 rounded-full px-2 text-meta font-medium">
-            <UsersRound className="size-3" strokeWidth={1.8} /> {collaboratorCount}
-          </Badge>
+          ))}
+          {people.length > 3 && (
+            <span className="grid size-7 place-items-center rounded-full border-2 border-card bg-secondary text-meta font-semibold text-muted-foreground">
+              +{people.length - 3}
+            </span>
+          )}
         </div>
       </div>
     </article>

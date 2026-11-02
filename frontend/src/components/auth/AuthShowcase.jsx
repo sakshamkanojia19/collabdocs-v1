@@ -1,7 +1,7 @@
 import { ArrowRight, Check } from 'lucide-react';
 import { Link } from 'react-router';
 
-const highlights = ['Real-time co-editing', 'Decisions stay logged', 'AI grounded in your docs'];
+const highlights = ['Live presence & sync', 'Decisions stay logged', 'AI grounded in your docs'];
 
 /**
  * Wise-style brand panel for the auth split layout. Deep violet is derived

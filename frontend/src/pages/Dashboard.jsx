@@ -1,27 +1,23 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  BookOpen,
   ArrowRight,
-  CalendarDays,
-  CheckCircle2,
-  FileCheck2,
-  FilePlus2,
+  ChevronDown,
   FileText,
-  Filter,
+  Gavel,
   Grid2X2,
+  LayoutTemplate,
   List,
   MoreHorizontal,
+  NotebookPen,
   Pencil,
   Plus,
   Search,
-  ShieldCheck,
   Share2,
-  Sparkles,
   Trash2,
   UsersRound,
-  X
+  WandSparkles
 } from 'lucide-react';
 import {
   createDocument,
@@ -55,71 +51,93 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { formatRelativeDate } from '@/lib/document-display';
+import api from '../services/api';
 
+// Each template creates its sections, so a new document opens with structure.
 const templates = [
   {
-    label: 'Blank document',
-    description: 'Start from a clean page',
-    icon: FilePlus2,
-    title: 'Untitled document',
-    outline: []
-  },
-  {
     label: 'Meeting notes',
-    description: 'Agenda, notes and actions',
-    icon: CalendarDays,
+    icon: NotebookPen,
     title: 'Meeting notes',
     outline: ['Agenda', 'Discussion notes', 'Decisions', 'Action items']
   },
   {
+    label: 'Product spec',
+    icon: LayoutTemplate,
+    title: 'Product spec',
+    outline: ['Problem', 'Goals', 'Requirements', 'Open questions']
+  },
+  {
     label: 'Project brief',
-    description: 'Goals, scope and owners',
-    icon: Sparkles,
+    icon: FileText,
     title: 'Project brief',
     outline: ['Goals', 'Scope', 'Owners', 'Timeline']
   },
   {
     label: 'Decision record',
-    description: 'Context, options and outcome',
-    icon: FileCheck2,
+    icon: Gavel,
     title: 'Decision record',
     outline: ['Context', 'Options considered', 'Decision', 'Outcome']
   }
 ];
 
-const formatRelativeDate = (value) => {
-  if (!value) return 'Recently';
-  const date = new Date(value);
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return 'Just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined });
+const templateContent = ({ title, outline }) =>
+  `<h1>${title}</h1>${outline.map((section) => `<h2>${section}</h2><p></p>`).join('')}`;
+
+const SORTS = {
+  edited: { label: 'Last edited', compare: (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt) },
+  created: { label: 'Newest first', compare: (a, b) => new Date(b.createdAt) - new Date(a.createdAt) },
+  title: { label: 'Title A–Z', compare: (a, b) => (a.title || '').localeCompare(b.title || '') }
+};
+
+const HOME_DOCUMENT_LIMIT = 6;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const greetingFor = (date) => {
+  const hour = date.getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
 };
 
 const DashboardSkeleton = () => (
-  <div className="animate-pulse space-y-8">
+  <div className="animate-pulse space-y-6">
     <div className="space-y-2">
-      <div className="h-7 w-56 rounded bg-muted" />
-      <div className="h-4 w-80 max-w-full rounded bg-muted/70" />
+      <div className="h-4 w-40 rounded bg-muted/70" />
+      <div className="h-7 w-64 rounded bg-muted" />
     </div>
-    <div className="grid gap-3 sm:grid-cols-3">
-      {[0, 1, 2].map((item) => <div key={item} className="h-24 rounded-xl border bg-card" />)}
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      {[0, 1, 2, 3].map((item) => <div key={item} className="h-[92px] rounded-xl border bg-card" />)}
     </div>
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      {[0, 1, 2, 3, 4, 5].map((item) => <div key={item} className="h-48 rounded-xl border bg-card" />)}
+      {[0, 1, 2].map((item) => <div key={item} className="h-40 rounded-xl border bg-card" />)}
     </div>
   </div>
+);
+
+const StatTile = ({ label, value, detail, detailTone = 'success', onClick }) => (
+  <button type="button" onClick={onClick} className="interactive-card p-4 text-left">
+    <span className="block text-caption text-muted-foreground">{label}</span>
+    <span className="mt-1 block text-title font-semibold">{value}</span>
+    <span
+      className={cn(
+        'mt-0.5 block truncate text-caption font-medium',
+        detailTone === 'success' ? 'text-success' : 'text-muted-foreground'
+      )}
+    >
+      {detail}
+    </span>
+  </button>
 );
 
 const Dashboard = ({ forcedView = null }) => {
@@ -128,23 +146,50 @@ const Dashboard = ({ forcedView = null }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { documents, loading, error } = useSelector((state) => state.document);
   const { user } = useSelector((state) => state.auth);
+  const { items: notifications } = useSelector((state) => state.notifications);
 
   const [newDocumentTitle, setNewDocumentTitle] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [layout, setLayout] = useState('grid');
+  const [sortKey, setSortKey] = useState('edited');
   const [renameTarget, setRenameTarget] = useState(null);
   const [renameTitle, setRenameTitle] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [selectedDocumentId, setSelectedDocumentId] = useState(null);
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [workItems, setWorkItems] = useState([]);
+  const [workLoading, setWorkLoading] = useState(true);
+  const [decisionPulse, setDecisionPulse] = useState({ total: 0, thisWeek: 0, decisions: [] });
 
   const activeView = forcedView || searchParams.get('view') || 'all';
+  const isHome = activeView === 'all';
 
   useEffect(() => {
     dispatch(fetchDocuments());
   }, [dispatch]);
+
+  // Open work and the decision pulse feed both the stat tiles and the rail.
+  const loadPulse = useCallback(() => {
+    api
+      .get('/ai/action-items?status=open&limit=50')
+      .then((response) => setWorkItems(response.data?.actionItems || []))
+      .catch(() => setWorkItems([]))
+      .finally(() => setWorkLoading(false));
+    api
+      .get('/chat/decisions?limit=3')
+      .then((response) =>
+        setDecisionPulse({
+          total: response.data?.total || 0,
+          thisWeek: response.data?.thisWeek || 0,
+          decisions: response.data?.decisions || []
+        })
+      )
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (isHome) loadPulse();
+  }, [isHome, loadPulse]);
 
   useEffect(() => {
     if (searchParams.get('create') === '1') {
@@ -163,14 +208,29 @@ const Dashboard = ({ forcedView = null }) => {
     () => documents.filter((document) => document.owner?.userId !== user?.id),
     [documents, user?.id]
   );
+  const documentTitles = useMemo(
+    () => new Map(documents.map((document) => [document._id, document.title || 'Untitled document'])),
+    [documents]
+  );
+
+  const pulse = useMemo(() => {
+    const now = Date.now();
+    return {
+      createdThisWeek: documents.filter((document) => now - new Date(document.createdAt) < 7 * DAY_MS).length,
+      changedByOthers: documents.filter(
+        (document) =>
+          now - new Date(document.updatedAt) < DAY_MS &&
+          document.lastEditedBy?.userId &&
+          document.lastEditedBy.userId !== user?.id
+      ).length,
+      unreadShares: notifications.filter((item) => item.status === 'pending').length,
+      assignedToMe: workItems.filter((item) => item.assignee?.userId === user?.id).length
+    };
+  }, [documents, notifications, user?.id, workItems]);
 
   const visibleDocuments = useMemo(() => {
     const source =
-      activeView === 'mine'
-        ? ownedDocuments
-        : activeView === 'shared'
-          ? sharedDocuments
-          : documents;
+      activeView === 'mine' ? ownedDocuments : activeView === 'shared' ? sharedDocuments : documents;
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return [...source]
       .filter((document) => {
@@ -181,27 +241,20 @@ const Dashboard = ({ forcedView = null }) => {
           document.owner?.name?.toLowerCase().includes(normalizedSearch)
         );
       })
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  }, [activeView, documents, ownedDocuments, searchTerm, sharedDocuments]);
+      .sort(SORTS[sortKey].compare);
+  }, [activeView, documents, ownedDocuments, searchTerm, sharedDocuments, sortKey]);
 
-  const selectedDocument = useMemo(
-    () => visibleDocuments.find((document) => document._id === selectedDocumentId) || null,
-    [selectedDocumentId, visibleDocuments]
-  );
+  const listedDocuments = isHome ? visibleDocuments.slice(0, HOME_DOCUMENT_LIMIT) : visibleDocuments;
 
-  useEffect(() => {
-    if (visibleDocuments.length > 0 && !selectedDocument) {
-      setSelectedDocumentId(visibleDocuments[0]._id);
-    }
-    if (visibleDocuments.length === 0 && selectedDocumentId) {
-      setSelectedDocumentId(null);
-    }
-  }, [selectedDocument, selectedDocumentId, visibleDocuments]);
-
+  const today = new Date();
+  const firstName = user?.name?.split(' ')[0];
   const viewCopy = {
     all: {
-      title: `Welcome back${user?.name ? `, ${user.name.split(' ')[0]}` : ''}`,
-      description: 'Pick up where you left off or start something new.'
+      title: `${greetingFor(today)}${firstName ? `, ${firstName}` : ''}`,
+      description:
+        pulse.changedByOthers > 0
+          ? `${pulse.changedByOthers} ${pulse.changedByOthers === 1 ? 'document' : 'documents'} changed by teammates in the last day.`
+          : 'Pick up where you left off or start something new.'
     },
     mine: {
       title: 'My documents',
@@ -216,11 +269,13 @@ const Dashboard = ({ forcedView = null }) => {
     description: 'Everything your team is working on.'
   };
 
-  const createAndOpen = async (title) => {
+  const createAndOpen = async (title, content) => {
     if (!title.trim() || isCreating) return;
     setIsCreating(true);
     try {
-      const document = await dispatch(createDocument({ title: title.trim() })).unwrap();
+      const document = await dispatch(
+        createDocument(content ? { title: title.trim(), content } : { title: title.trim() })
+      ).unwrap();
       setNewDocumentTitle('');
       setIsCreateOpen(false);
       navigate(`/document/${document._id}`);
@@ -274,237 +329,140 @@ const Dashboard = ({ forcedView = null }) => {
     navigate(`/document/${documentId}`, { state: { openShare: true } });
   };
 
-  return (
-    <div className="flex min-h-[calc(100vh-3.5rem)] min-w-0">
-      <div className="mx-auto min-w-0 max-w-[1500px] flex-1 px-4 pb-12 pt-6 sm:px-6 lg:px-8">
-      {loading && documents.length === 0 ? (
-        <DashboardSkeleton />
-      ) : (
-        <div className="space-y-6 rise-in">
-          <section className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <div className="mb-2 flex items-center gap-1.5 text-meta font-medium text-muted-foreground">
-                CollabDocs <span className="text-border">/</span> Documents <span className="text-border">/</span> {activeView === 'all' ? 'Overview' : viewCopy.title}
+  const ownerActions = (document) =>
+    document.owner?.userId === user?.id ? (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" className="size-7 rounded-lg text-muted-foreground">
+            <MoreHorizontal className="size-4" strokeWidth={1.8} />
+            <span className="sr-only">Document actions</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuItem onSelect={() => openRenameDialog(document)}>
+            <Pencil className="mr-2 size-4" strokeWidth={1.8} />
+            Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => handleShare(document._id)}>
+            <Share2 className="mr-2 size-4" strokeWidth={1.8} />
+            Share
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleteTarget(document)}>
+            <Trash2 className="mr-2 size-4" strokeWidth={1.8} />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ) : null;
+
+  const library = (
+    <section aria-labelledby="documents-heading">
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 id="documents-heading" className="text-body-lg font-semibold">
+          {isHome ? 'Recent documents' : `${visibleDocuments.length} ${visibleDocuments.length === 1 ? 'document' : 'documents'}`}
+        </h2>
+        <div className="flex items-center gap-2">
+          {!isHome && (
+            <>
+              <label className="relative min-w-0 flex-1 sm:w-60 sm:flex-none">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.8} />
+                <Input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Filter documents"
+                  className="h-9 rounded-lg bg-card pl-8 text-body shadow-raised"
+                />
+                <span className="sr-only">Filter documents</span>
+              </label>
+              <div className="flex rounded-lg border bg-card p-0.5 shadow-raised" aria-label="Document layout">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={cn('size-7 rounded-md', layout === 'grid' && 'bg-accent text-accent-foreground')}
+                  onClick={() => setLayout('grid')}
+                  aria-label="Grid view"
+                >
+                  <Grid2X2 className="size-4" strokeWidth={1.8} />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={cn('size-7 rounded-md', layout === 'list' && 'bg-accent text-accent-foreground')}
+                  onClick={() => setLayout('list')}
+                  aria-label="List view"
+                >
+                  <List className="size-4" strokeWidth={1.8} />
+                </Button>
               </div>
-              <h1 className="text-title-lg font-semibold tracking-tight">
-                {viewCopy.title}
-              </h1>
-              <p className="mt-1 max-w-2xl text-body text-muted-foreground">{viewCopy.description}</p>
-            </div>
-            <Button
-              className="h-9 gap-2 self-start rounded-full px-4 text-body font-medium shadow-raised"
-              onClick={() => setIsCreateOpen(true)}
-            >
+            </>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex h-8 items-center gap-1 rounded-lg px-2 text-caption text-muted-foreground transition-colors duration-control hover:bg-secondary hover:text-foreground"
+              >
+                {SORTS[sortKey].label} <ChevronDown className="size-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuLabel className="text-caption">Sort by</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={sortKey} onValueChange={setSortKey}>
+                {Object.entries(SORTS).map(([key, sort]) => (
+                  <DropdownMenuRadioItem key={key} value={key} className="text-body">
+                    {sort.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {error && (
+        <div role="alert" className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-body text-destructive">
+          {error.error || error.message || error.msg || 'Documents could not be loaded.'}
+        </div>
+      )}
+
+      {visibleDocuments.length === 0 ? (
+        <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed bg-card/50 px-6 py-10 text-center">
+          <span className="icon-chip mb-4 size-10">
+            <FileText className="size-4" strokeWidth={1.8} />
+          </span>
+          <h3 className="text-body-lg font-semibold">
+            {searchTerm ? 'No matching documents' : activeView === 'shared' ? 'Nothing shared yet' : 'Create your first document'}
+          </h3>
+          <p className="mt-1 max-w-sm text-body text-muted-foreground">
+            {searchTerm
+              ? 'Try another title, tag, or owner.'
+              : activeView === 'shared'
+                ? 'Documents shared by teammates will appear here.'
+                : 'Start with a blank page or a focused template.'}
+          </p>
+          {!searchTerm && activeView !== 'shared' && (
+            <Button className="mt-4 h-9 gap-2 rounded-full px-4 text-body font-medium" onClick={() => setIsCreateOpen(true)}>
               <Plus className="size-4" strokeWidth={1.8} />
               New document
             </Button>
-          </section>
-
-          {activeView === 'all' && (
-            <section aria-labelledby="start-heading" className="surface-card p-5 sm:p-6">
-              <div className="mb-5 flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-meta font-semibold uppercase tracking-[0.1em] text-muted-foreground">Quick start</p>
-                  <h2 id="start-heading" className="mt-1 text-title-sm font-semibold">Start from a template</h2>
-                  <p className="mt-1 text-body text-muted-foreground">Move faster with a focused structure you can adapt.</p>
-                </div>
-                <span className="hidden shrink-0 rounded-full bg-secondary px-2.5 py-1 text-meta font-medium text-muted-foreground sm:inline-flex">
-                  {templates.length} templates
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-4 sm:gap-5 xl:grid-cols-4">
-                {templates.map((template) => (
-                  <TemplateCard
-                    key={template.label}
-                    {...template}
-                    disabled={isCreating}
-                    onClick={() => createAndOpen(template.title)}
-                  />
-                ))}
-              </div>
-            </section>
           )}
-
-          <section className="surface-card grid overflow-hidden sm:grid-cols-3 sm:divide-x" aria-label="Document summary">
-            {[
-              { label: 'All documents', value: documents.length, icon: BookOpen, view: 'all' },
-              { label: 'Owned by me', value: ownedDocuments.length, icon: FileText, view: 'mine' },
-              { label: 'Shared with me', value: sharedDocuments.length, icon: UsersRound, view: 'shared' }
-            ].map((stat) => (
-              <button
-                type="button"
-                key={stat.label}
-                onClick={() => {
-                  const route = {
-                    all: '/dashboard',
-                    mine: '/documents',
-                    shared: '/shared'
-                  }[stat.view];
-                  navigate(route);
-                }}
-                className={cn(
-                  'flex items-center gap-3 border-b px-4 py-3.5 text-left transition-colors duration-control hover:bg-secondary/50 sm:border-b-0',
-                  activeView === stat.view && 'bg-accent/50'
-                )}
-              >
-                <span
-                  className={cn(
-                    'grid size-9 shrink-0 place-items-center rounded-lg',
-                    activeView === stat.view
-                      ? 'bg-accent text-accent-foreground'
-                      : 'bg-secondary text-muted-foreground'
-                  )}
-                >
-                  <stat.icon className="size-4" strokeWidth={1.8} />
-                </span>
-                <span>
-                  <span className="block text-title font-semibold">{stat.value}</span>
-                  <span className="mt-0.5 block text-caption text-muted-foreground">{stat.label}</span>
-                </span>
-              </button>
-            ))}
-          </section>
-
-          <MyWorkSection />
-
-          <section aria-labelledby="documents-heading">
-            <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <div>
-                <p className="text-meta font-semibold uppercase tracking-[0.1em] text-muted-foreground">Your library</p>
-                <h2 id="documents-heading" className="mt-1 text-title-sm font-semibold">
-                  {activeView === 'all' ? 'Recent documents' : viewCopy.title}
-                </h2>
-                <p className="mt-1 text-caption text-muted-foreground">
-                  {visibleDocuments.length} {visibleDocuments.length === 1 ? 'document' : 'documents'}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="relative min-w-0 flex-1 md:w-60 md:flex-none">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" strokeWidth={1.8} />
-                  <Input
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Filter documents"
-                    className="h-9 rounded-lg bg-card pl-8 text-body shadow-raised"
-                  />
-                  <span className="sr-only">Filter documents</span>
-                </label>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" className="size-9 rounded-lg bg-card shadow-raised" aria-label="Filter documents">
-                      <Filter className="size-4" strokeWidth={1.8} />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44">
-                    <DropdownMenuItem onSelect={() => navigate('/dashboard')}>All documents</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => navigate('/documents/my')}>Owned by me</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => navigate('/documents/shared')}>Shared with me</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <div className="flex rounded-lg border bg-card p-0.5 shadow-raised" aria-label="Document layout">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className={cn('size-7 rounded-md', layout === 'grid' && 'bg-accent text-accent-foreground')}
-                    onClick={() => setLayout('grid')}
-                    aria-label="Grid view"
-                  >
-                    <Grid2X2 className="size-4" strokeWidth={1.8} />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className={cn('size-7 rounded-md', layout === 'list' && 'bg-accent text-accent-foreground')}
-                    onClick={() => setLayout('list')}
-                    aria-label="List view"
-                  >
-                    <List className="size-4" strokeWidth={1.8} />
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {error && (
-              <div role="alert" className="mb-4 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-body text-destructive">
-                {error.error || error.message || error.msg || 'Documents could not be loaded.'}
-              </div>
-            )}
-
-            {visibleDocuments.length === 0 ? (
-              <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed bg-card/50 px-6 py-10 text-center">
-                <span className="icon-chip mb-4 size-10">
-                  <FileText className="size-4" strokeWidth={1.8} />
-                </span>
-                <h4 className="text-body-lg font-semibold">
-                  {searchTerm ? 'No matching documents' : activeView === 'shared' ? 'Nothing shared yet' : 'Create your first document'}
-                </h4>
-                <p className="mt-1 max-w-sm text-body text-muted-foreground">
-                  {searchTerm
-                    ? 'Try another title, tag, or owner.'
-                    : activeView === 'shared'
-                      ? 'Documents shared by teammates will appear here.'
-                      : 'Start with a blank page or a focused template.'}
-                </p>
-                {!searchTerm && activeView !== 'shared' && (
-                  <Button className="mt-4 h-9 gap-2 rounded-full px-4 text-body font-medium" onClick={() => setIsCreateOpen(true)}>
-                    <Plus className="size-4" strokeWidth={1.8} />
-                    New document
-                  </Button>
-                )}
-              </div>
-            ) : layout === 'grid' ? (
-              <div className="grid grid-cols-2 gap-x-4 gap-y-7 sm:gap-x-5 xl:grid-cols-3 2xl:grid-cols-4">
-                {visibleDocuments.map((document) => {
-                  const isOwner = document.owner?.userId === user?.id;
-                  return (
-                    <DocumentPreviewCard
-                      key={document._id}
-                      document={document}
-                      isOwner={isOwner}
-                      relativeDate={formatRelativeDate(document.updatedAt)}
-                      selected={selectedDocumentId === document._id}
-                      onSelect={(nextDocument) => {
-                        setSelectedDocumentId(nextDocument._id);
-                        setDetailsOpen(true);
-                      }}
-                      actions={
-                        isOwner ? (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="secondary"
-                                size="icon"
-                                className="size-8 rounded-lg border bg-background/95 text-foreground shadow-raised backdrop-blur hover:bg-background"
-                              >
-                                <MoreHorizontal className="size-4" strokeWidth={1.8} />
-                                <span className="sr-only">Document actions</span>
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-40">
-                              <DropdownMenuItem onSelect={() => openRenameDialog(document)}>
-                                <Pencil className="mr-2 size-4" strokeWidth={1.8} />
-                                Rename
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={() => handleShare(document._id)}>
-                                <Share2 className="mr-2 size-4" strokeWidth={1.8} />
-                                Share
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleteTarget(document)}>
-                                <Trash2 className="mr-2 size-4" strokeWidth={1.8} />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        ) : null
-                      }
-                    />
-                  );
-                })}
-              </div>
-            ) : (
+        </div>
+      ) : layout === 'grid' || isHome ? (
+        <div className={cn('grid grid-cols-1 gap-3 sm:grid-cols-2', isHome ? 'xl:grid-cols-3' : 'xl:grid-cols-3 2xl:grid-cols-4')}>
+          {listedDocuments.map((document) => (
+            <DocumentPreviewCard
+              key={document._id}
+              document={document}
+              userId={user?.id}
+              relativeDate={formatRelativeDate(document.updatedAt)}
+              actions={ownerActions(document)}
+            />
+          ))}
+        </div>
+      ) : (
               <div className="overflow-x-auto rounded-xl border bg-card shadow-raised">
                 <table className="w-full min-w-[560px] border-collapse text-body">
                   <thead>
@@ -530,14 +488,8 @@ const Dashboard = ({ forcedView = null }) => {
                       return (
                         <tr
                           key={document._id}
-                          onClick={() => {
-                            setSelectedDocumentId(document._id);
-                            setDetailsOpen(true);
-                          }}
-                          className={cn(
-                            'cursor-pointer border-t transition-colors duration-control hover:bg-secondary/40',
-                            selectedDocumentId === document._id && 'bg-accent/50'
-                          )}
+                          onClick={() => navigate(`/document/${document._id}`)}
+                          className="cursor-pointer border-t transition-colors duration-control hover:bg-secondary/40"
                         >
                           <td className="px-4 py-3">
                             <div className="flex min-w-0 items-center gap-2.5">
@@ -595,120 +547,124 @@ const Dashboard = ({ forcedView = null }) => {
                   </tbody>
                 </table>
               </div>
-            )}
-          </section>
-        </div>
       )}
-      </div>
 
-      {detailsOpen && (
-        <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[292px] shrink-0 flex-col border-l bg-card lg:flex">
-          <div className="flex h-14 shrink-0 items-center justify-between border-b px-4">
-            <h2 className="text-body font-semibold">Document details</h2>
-            <Button variant="ghost" size="icon" className="size-7 rounded-lg" onClick={() => setDetailsOpen(false)} aria-label="Close document details">
-              <X className="size-4" strokeWidth={1.8} />
-            </Button>
-          </div>
+      {isHome && visibleDocuments.length > HOME_DOCUMENT_LIMIT && (
+        <Link
+          to="/documents"
+          className="mt-3 inline-flex items-center gap-1 text-caption font-semibold text-primary transition-colors duration-control hover:text-primary/80"
+        >
+          View all {visibleDocuments.length} documents <ArrowRight className="size-3.5" />
+        </Link>
+      )}
+    </section>
+  );
 
-          {selectedDocument ? (
-            <>
-              <div className="workspace-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-5">
-                <p className="text-meta font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                  Personal workspace / Documents
+  return (
+    <div className="min-w-0">
+      <div className="mx-auto w-full max-w-[1500px] px-4 pb-12 pt-6 sm:px-6 lg:px-8">
+        {loading && documents.length === 0 ? (
+          <DashboardSkeleton />
+        ) : (
+          <div className="space-y-6 rise-in">
+            <section className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-caption font-medium text-muted-foreground">
+                  {isHome
+                    ? today.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
+                    : 'Documents'}
                 </p>
-                <h3 className="mt-3 text-title-sm font-semibold">
-                  {selectedDocument.title || 'Untitled document'}
-                </h3>
-
-                <div className="mt-4 flex flex-wrap gap-1.5">
-                  <span
-                    className={cn(
-                      'status-pill',
-                      selectedDocument.owner?.userId === user?.id ? 'status-pill--info' : 'status-pill--neutral'
-                    )}
-                  >
-                    {selectedDocument.owner?.userId === user?.id ? 'Owned by you' : 'Shared with you'}
-                  </span>
-                  <span className="status-pill status-pill--success">Active</span>
-                </div>
-
-                <dl className="mt-6 space-y-3 border-y py-4 text-caption">
-                  <div className="grid grid-cols-[86px_1fr] gap-2">
-                    <dt className="text-muted-foreground">Owner</dt>
-                    <dd className="truncate font-medium">{selectedDocument.owner?.name || selectedDocument.owner?.email || 'You'}</dd>
-                  </div>
-                  <div className="grid grid-cols-[86px_1fr] gap-2">
-                    <dt className="text-muted-foreground">Collaborators</dt>
-                    <dd className="font-medium">{(selectedDocument.collaborators?.length || 0) + 1} people</dd>
-                  </div>
-                  <div className="grid grid-cols-[86px_1fr] gap-2">
-                    <dt className="text-muted-foreground">Last edited</dt>
-                    <dd className="font-medium">{formatRelativeDate(selectedDocument.updatedAt)}</dd>
-                  </div>
-                  <div className="grid grid-cols-[86px_1fr] gap-2">
-                    <dt className="text-muted-foreground">Access</dt>
-                    <dd className="flex items-center gap-1 font-medium">
-                      <ShieldCheck className="size-3.5 text-success" strokeWidth={1.8} /> Protected
-                    </dd>
-                  </div>
-                </dl>
-
-                <section className="mt-5">
-                  <p className="text-caption font-semibold">Collaboration pulse</p>
-                  <div className="mt-2 rounded-xl border bg-secondary/50 p-3">
-                    <div className="flex items-start gap-2">
-                      <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" strokeWidth={1.8} />
-                      <div>
-                        <p className="text-caption font-semibold">Ready for your next edit</p>
-                        <p className="mt-1 text-meta text-muted-foreground">Changes are synced and collaborators can continue from the latest version.</p>
-                      </div>
-                    </div>
-                  </div>
-                </section>
-
-                <section className="mt-5">
-                  <p className="text-caption font-semibold">About this document</p>
-                  <p className="mt-2 text-caption text-muted-foreground">
-                    A shared working document in your personal workspace. Open it to edit content, review decisions, or collaborate with your team.
-                  </p>
-                </section>
-
-                {selectedDocument.tags?.length > 0 && (
-                  <section className="mt-5">
-                    <p className="text-caption font-semibold">Tags</p>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {selectedDocument.tags.slice(0, 5).map((tag) => (
-                        <span key={tag} className="rounded-md border bg-secondary/60 px-2 py-0.5 text-meta text-muted-foreground">{tag}</span>
-                      ))}
-                    </div>
-                  </section>
-                )}
+                <h1 className="mt-1 text-title-lg font-semibold tracking-tight">{viewCopy.title}</h1>
+                <p className="mt-1 max-w-2xl text-body text-muted-foreground">{viewCopy.description}</p>
               </div>
-
-              <div className="flex shrink-0 gap-2 border-t p-3">
-                {selectedDocument.owner?.userId === user?.id && (
-                  <Button variant="outline" className="h-9 rounded-full px-3.5 text-caption" onClick={() => handleShare(selectedDocument._id)}>
-                    <Share2 className="mr-1.5 size-4" strokeWidth={1.8} /> Share
+              <div className="flex gap-2 self-start">
+                {isHome && (
+                  <Button asChild variant="outline" className="h-9 gap-2 rounded-full bg-card px-4 text-body font-medium shadow-raised">
+                    <Link to="/ai">
+                      <WandSparkles className="size-4 text-primary" strokeWidth={1.8} />
+                      Ask AI
+                    </Link>
                   </Button>
                 )}
-                <Button className="h-9 flex-1 rounded-full text-caption font-medium" onClick={() => navigate(`/document/${selectedDocument._id}`)}>
-                  Open document <ArrowRight className="ml-1.5 size-4" strokeWidth={1.8} />
+                <Button
+                  className="h-9 gap-2 rounded-full px-4 text-body font-medium shadow-raised"
+                  onClick={() => setIsCreateOpen(true)}
+                >
+                  <Plus className="size-4" strokeWidth={1.8} />
+                  New document
                 </Button>
               </div>
-            </>
-          ) : (
-            <div className="grid flex-1 place-items-center px-6 text-center">
-              <div>
-                <span className="icon-chip mx-auto size-10">
-                  <FileText className="size-4" strokeWidth={1.8} />
-                </span>
-                <p className="mt-3 text-body font-semibold">Select a document</p>
-                <p className="mt-1 text-caption text-muted-foreground">Document details and actions will appear here.</p>
-              </div>
-            </div>
-          )}
-        </aside>
-      )}
+            </section>
+
+            {isHome ? (
+              <>
+                <section className="grid grid-cols-2 gap-3 xl:grid-cols-4" aria-label="Workspace summary">
+                  <StatTile
+                    label="Documents"
+                    value={documents.length}
+                    detail={pulse.createdThisWeek > 0 ? `+${pulse.createdThisWeek} this week` : 'None new this week'}
+                    detailTone={pulse.createdThisWeek > 0 ? 'success' : 'muted'}
+                    onClick={() => navigate('/documents')}
+                  />
+                  <StatTile
+                    label="Shared with you"
+                    value={sharedDocuments.length}
+                    detail={pulse.unreadShares > 0 ? `${pulse.unreadShares} unread` : 'All caught up'}
+                    detailTone={pulse.unreadShares > 0 ? 'success' : 'muted'}
+                    onClick={() => navigate('/shared')}
+                  />
+                  <StatTile
+                    label="Open action items"
+                    value={workItems.length}
+                    detail={pulse.assignedToMe > 0 ? `${pulse.assignedToMe} assigned to you` : 'None assigned to you'}
+                    detailTone={pulse.assignedToMe > 0 ? 'success' : 'muted'}
+                    onClick={() => document.getElementById('my-work')?.scrollIntoView({ behavior: 'smooth' })}
+                  />
+                  <StatTile
+                    label="Decisions logged"
+                    value={decisionPulse.total}
+                    detail={decisionPulse.thisWeek > 0 ? `+${decisionPulse.thisWeek} this week` : 'None this week'}
+                    detailTone={decisionPulse.thisWeek > 0 ? 'success' : 'muted'}
+                    onClick={() =>
+                      decisionPulse.decisions[0] && navigate(`/document/${decisionPulse.decisions[0].documentId}`)
+                    }
+                  />
+                </section>
+
+                <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+                  <div className="min-w-0 space-y-6">
+                    <section aria-labelledby="start-heading">
+                      <h2 id="start-heading" className="mb-3 text-body-lg font-semibold">
+                        Start from a template
+                      </h2>
+                      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                        {templates.map((template) => (
+                          <TemplateCard
+                            key={template.label}
+                            {...template}
+                            disabled={isCreating}
+                            onClick={() => createAndOpen(template.title, templateContent(template))}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                    {library}
+                  </div>
+                  <MyWorkSection
+                    items={workItems}
+                    onItemsChange={setWorkItems}
+                    latestDecision={decisionPulse.decisions[0]}
+                    documentTitles={documentTitles}
+                    loading={workLoading}
+                  />
+                </div>
+              </>
+            ) : (
+              library
+            )}
+          </div>
+        )}
+      </div>
 
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="max-w-md rounded-xl p-0">

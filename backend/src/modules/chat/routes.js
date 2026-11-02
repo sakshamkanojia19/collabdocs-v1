@@ -11,7 +11,11 @@ const ChatMessage = require('./models/ChatMessage');
 const ChatNotification = require('./models/ChatNotification');
 const { emitToUsers, getSocketServer } = require('./socketRegistry');
 const { publishChatEvent } = require('./services/kafka');
-const { loadDocumentForUser } = require('../documents/service');
+const {
+  getDocumentTitles,
+  listReadableDocumentIds,
+  loadDocumentForUser
+} = require('../documents/service');
 const { attachEntitlements } = require('../accounts/service');
 
 const router = Router();
@@ -952,6 +956,51 @@ router.delete(
     emitToGroupRoom(group._id, 'chat:message:updated', { message: dto });
 
     res.json({ message: dto });
+  })
+);
+
+/**
+ * Workspace-wide decision pulse for the dashboard: totals plus the latest
+ * summaries, limited to documents the requester can read. Like the per-document
+ * log, only promoted summaries are exposed — never the conversation itself.
+ */
+router.get(
+  '/decisions',
+  [query('limit').optional().isInt({ min: 1, max: 20 }).toInt()],
+  handleValidation,
+  asyncHandler(async (req, res) => {
+    const documentIds = await listReadableDocumentIds(req.user.id, req.accountId);
+    const filter = { 'decision.documentId': { $in: documentIds }, deletedAt: null };
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const [total, thisWeek, latest] = await Promise.all([
+      ChatMessage.countDocuments(filter),
+      ChatMessage.countDocuments({ ...filter, 'decision.markedAt': { $gte: weekAgo } }),
+      ChatMessage.find(filter)
+        .sort({ 'decision.markedAt': -1 })
+        .limit(req.query.limit || 5)
+        .select('decision')
+        .lean()
+    ]);
+
+    const titles = await getDocumentTitles(
+      latest.map((message) => message.decision.documentId),
+      req.user.id,
+      req.accountId
+    );
+
+    res.json({
+      total,
+      thisWeek,
+      decisions: latest.map((message) => ({
+        messageId: String(message._id),
+        summary: message.decision.summary,
+        markedAt: message.decision.markedAt,
+        markedBy: message.decision.markedBy,
+        documentId: String(message.decision.documentId),
+        documentTitle: titles.get(String(message.decision.documentId))?.title || 'Untitled document'
+      }))
+    });
   })
 );
 

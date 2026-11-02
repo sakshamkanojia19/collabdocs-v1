@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowUpRight,
-  Bot,
   FileText,
   Network,
   Plus,
@@ -26,6 +25,12 @@ const AIWorkspacePage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [generatorOpen, setGeneratorOpen] = useState(false);
+  const [generatorType, setGeneratorType] = useState('summary');
+
+  const openGenerator = (nextType) => {
+    setGeneratorType(nextType);
+    setGeneratorOpen(true);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -67,38 +72,20 @@ const AIWorkspacePage = () => {
           </div>
           <h1 className="mt-1 text-title-lg font-semibold tracking-tight">AI workspace</h1>
           <p className="mt-1 max-w-2xl text-body text-muted-foreground">
-            Generate grounded summaries and visual maps from documents you can access. Results stay connected to their source documents.
+            Ask questions across your documents, and generate summaries and mind maps that stay linked to their sources.
           </p>
         </div>
         <Button
           className="h-9 shrink-0 gap-2 self-start rounded-full px-4 text-body font-medium shadow-raised"
-          onClick={() => setGeneratorOpen(true)}
+          onClick={() => openGenerator(type)}
         >
           <Plus className="size-3.5" /> Generate
         </Button>
       </header>
 
       <div className="mt-6">
-        <WorkspaceAskPanel />
+        <WorkspaceAskPanel onGenerate={openGenerator} />
       </div>
-
-      <section className="mt-6 grid gap-3 sm:grid-cols-3">
-        {[
-          { label: 'AI summaries', value: summaries.length, icon: FileText },
-          { label: 'Mind maps', value: mindMaps.length, icon: Network },
-          { label: 'Available capabilities', value: 3, icon: Bot }
-        ].map((item) => (
-          <div key={item.label} className="surface-card flex items-center gap-3 p-4">
-            <span className="icon-chip">
-              <item.icon className="size-4" strokeWidth={1.8} />
-            </span>
-            <div>
-              <p className="text-title font-semibold leading-none">{item.value}</p>
-              <p className="mt-1 text-caption text-muted-foreground">{item.label}</p>
-            </div>
-          </div>
-        ))}
-      </section>
 
       <section className="mt-8">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -206,7 +193,7 @@ const AIWorkspacePage = () => {
               <p className="mt-1 text-body text-muted-foreground">Generate one from a saved document to begin.</p>
               <Button
                 className="mt-4 h-9 gap-2 rounded-full px-4 text-body font-medium"
-                onClick={() => setGeneratorOpen(true)}
+                onClick={() => openGenerator(type)}
               >
                 <Plus className="size-3.5" /> Generate
               </Button>
@@ -218,7 +205,7 @@ const AIWorkspacePage = () => {
       <ArtifactGeneratorDialog
         open={generatorOpen}
         onOpenChange={setGeneratorOpen}
-        defaultType={type}
+        defaultType={generatorType}
         onGenerated={load}
       />
     </div>

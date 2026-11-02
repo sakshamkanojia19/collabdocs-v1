@@ -92,6 +92,9 @@ module.exports = {
         title: ['1.25rem', { lineHeight: '1.6rem', letterSpacing: '-0.018em' }],
         'title-lg': ['1.5rem', { lineHeight: '1.85rem', letterSpacing: '-0.024em' }],
         display: ['2rem', { lineHeight: '2.25rem', letterSpacing: '-0.032em' }],
+        // Marketing-only steps: section headlines and the landing hero.
+        'display-lg': ['2.5rem', { lineHeight: '2.85rem', letterSpacing: '-0.036em' }],
+        hero: ['3.5rem', { lineHeight: '3.75rem', letterSpacing: '-0.042em' }],
       },
       boxShadow: {
         // Borders carry most hierarchy; elevation is reserved and consistent.

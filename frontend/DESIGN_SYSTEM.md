@@ -16,7 +16,8 @@ app reads as one product.
 3. **Calm type.** Inter, 13–14px body. Use ONLY the named scale: `text-meta`
    (11px), `text-caption` (12px), `text-body` (13px), `text-body-lg` (14px),
    `text-title-sm` (16px), `text-title` (20px), `text-title-lg` (24px),
-   `text-display` (32px). Never `text-[10px]`-style arbitrary sizes.
+   `text-display` (32px). Marketing pages only may also use
+   `text-display-lg` (40px) and `text-hero` (56px). Never `text-[10px]`-style arbitrary sizes.
 4. **Tokens only.** Never hardcode colors (`#hex`, `slate-200`, `violet-600`)
    in chrome. Use `bg-background`, `bg-card`, `bg-secondary`, `bg-accent`,
    `text-foreground`, `text-muted-foreground`, `border`, `bg-primary`,
